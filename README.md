@@ -1,27 +1,19 @@
-# Dispersion Calculation
+# Dispersion Curve Calculator
 
-This is a set of scripts which allow you to calculate dispersion curves for Lamb waves in flat plates. It's been developed over many years, by many people, with each contributing to it's functionality, reliability, or speed in some way. This version was compiled by Luke in June 2023.
+This is a program which calculates Lamb wave dispersion curves for flat plates of any given material. It loosely follows the theory in Rose, but with the mathematics taken from an earlier version of this code written by Amanda, Beth and Chris. This version has been entirely rewrityten to avoid some issues with the previous code where the solver had some instabilities.
 
-## Order of Operations
+Each file should be fairly obvious what it is doing from the comments and so on within that file. Here I will instead descibe how to use the program, and how to counter any issues you might come across.
 
-This section should give you an idea of what scripts to run and what you need to set at each stage. 
+Start by opening main.m. This is more than likely the only part of the code you'll need to interact with - everything else is defining fucntions that are called from main. Enter the values in the inputs for your given material. For the plate thickness you can either enter the thickness of your plate, in which case the x axis in the dispersion curves are frequency values, or you can enter 1E-3 (1mm) to get the x axis in MHz mm. The frequency and phase velocity bounds at the top shouldn't affect the stability of the solver, and are just used for decided how much of the dispersion curves you want to see. Adjusting the f_step down may help with reconstructing the modes, which comes a little later.
 
-### cp_dispersion
+## Description of main - what is it actually doing?
 
-Run this script first - it's the one that does the main calculation of the phase velocity vs frequency\*thickness product. You'll need to set the inputs at the top - set c_long and c_shear as te longitudinal and shear wave velocities, set the thickness of the plate, and the frequency and phase velocity step sizes and ranges. 
+The first step is to solve the equations for the symmetric and antisymmetric (S and AS) modes. This happens in the "solver function". The code iterates trhough all the frequencies to solve at, finding where the fucntions defined in symm and asymm cross the x axis. The results are put into a cell array for the time being, since we don't know how many modes we will get so we can't preallocate an array.
 
-This script will likely take a while to run, and it'll be better on machines with a lot of cores, for example Louis.
+The next step is to use "unjumble" to sort out all the data. The reason for this is atht the roots don't necessarily come out in the right order, so you don't just get oine column for each mode, and instead they're all suffled around.
 
-The output of this script is a csv file with the name you gave. Inside, the first column will be frequency\*thickness, then all of the symmetric modes, then the antisymmetric modes. On completion of the script, "SPLIT = N" will be printed in the console - note this dfown as it's the column number that separates the symmetric and antisymmetric modes, and you'll need it in a bit.
+The way it does this is a little complicated, but it helps if you have a set of dispersion curves in your head as you think about this. It starts by looking through the cell array and finding the max number of modes at a given frequency. Since the modes start at a particular frequency then go off to infinite frequency we can assume that none will dissapear as we go up in frequency. It then creates an array that is N_modes wide by N_frequencies long, and initialises it with NaNs. It puts the modes from the first frequency into the first row, aligning them to the left as there will not be enough to fill the row. It then loops through the remaining cells in the cell array, trying to find the most suitable column to insert each value. It finds the minimum difference between the value it wants to place and all of the row above, and if that difference is lower than a threshold value it places it below the closest match. If it isn't closer than the threshold, it must be a new mode, and so it gets a new column. This is repeated until all the values are nicely arranged into 1 mode per column. You may have a couple of issues with this - I've tried to make it as robust as possible but its just abit fiddly. You might have 'jumps' where one mode jhjumps up to the next,then back down. If so, adjust the threshold value (2nd input to unjumble on lines 37/38). The other issue is that sometimes when the modes start they start from infinite c_phase at what is known as the cutoff frequency. Sometimes these asymptotes arc over the mode rather than behaving asymptotically, which means the system cannot classify it as the same mode (since it has 2 values of cp at one f). To solve this issue decrease cp_max to crop it off the top of the plot.
 
-### jump_remover
+The next step is interpolation, which is just to fill in any small gaps in the modes using a cubic spline algorithm. This also features a little bit of smoothing using the Savitsky-Golay filter which helps remove any steps in the data for when we differentiate it later.
 
-Almost always, the output of cp_dispersion will have jumps in the data, and msising postions of some lines where NaNs are in the array. You need to fix this before you move onto the next step, so jump_remover does the fixing. It'll ouput another file containing all the modes with the same name but "GAP_FILLED" appended to the end.
-
-Check that it looks sensible before you continue.
-
-### calc_Cg
-
-Once you've filled the gaps just run calc_Cg with the GAP_FILLED filename inputted at the top of the script. This should just work but you might have to play around with the filtering a bit if there are lots of wiggly bits in the data.
-
-If you're struggling to get to high enough frequency\*thickness, one thing I found that helps is to calculate quite a bit past the frequency thickness you need right from the start, then crop of the unstable bit at the end.
+Then the group velocities are calculated and displayed on the screen. The data is formatted and saved in csv files.
